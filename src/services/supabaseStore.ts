@@ -28,13 +28,15 @@ function writeLocal<T>(key: string, data: T): void {
 }
 
 export async function loadFavorites(): Promise<FoodItem[]> {
+  if (!supabase) return readLocal<FoodItem[]>(FAVORITES_KEY, []);
   const { data, error } = await supabase.from('favorites').select('food').order('created_at', { ascending: false });
   if (error || !data) return readLocal<FoodItem[]>(FAVORITES_KEY, []);
   return data.map((row: { food: FoodItem }) => row.food);
 }
 
 export async function addFavorite(food: FoodItem): Promise<boolean> {
-  writeLocal(FAVORITES_KEY, [food, ...readLocal<FoodItem[]>(FAVORITES_KEY, [])]);
+  writeLocal(FAVORITES_KEY, [food, ...readLocal<FoodItem[]>(FAVORITES_KEY, []).filter((f) => f.id !== food.id)]);
+  if (!supabase) return false;
   const { error } = await supabase.from('favorites').insert({ food_id: food.id, food });
   return !error;
 }
@@ -44,11 +46,13 @@ export async function removeFavorite(foodId: string): Promise<boolean> {
     FAVORITES_KEY,
     readLocal<FoodItem[]>(FAVORITES_KEY, []).filter((f) => f.id !== foodId)
   );
+  if (!supabase) return false;
   const { error } = await supabase.from('favorites').delete().eq('food_id', foodId);
   return !error;
 }
 
 export async function loadHistory(): Promise<HistoryRecord[]> {
+  if (!supabase) return readLocal<HistoryRecord[]>(HISTORY_KEY, []);
   const { data, error } = await supabase
     .from('history')
     .select('*')
@@ -85,6 +89,14 @@ export async function loadHistory(): Promise<HistoryRecord[]> {
 export async function addHistoryRecord(
   record: Omit<HistoryRecord, 'id' | 'createdAt'>
 ): Promise<HistoryRecord[]> {
+  if (!supabase) {
+    const localRecord: HistoryRecord = {
+      ...record,
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+    };
+    return [localRecord, ...readLocal<HistoryRecord[]>(HISTORY_KEY, [])];
+  }
   const { data, error } = await supabase
     .from('history')
     .insert({
@@ -125,7 +137,7 @@ export async function updateHistoryRecord(id: string, patch: Partial<HistoryReco
   if (patch.actuallyEaten !== undefined) db.actually_eaten = patch.actuallyEaten;
   if (patch.rating !== undefined) db.rating = patch.rating;
   if (patch.dislikeReason !== undefined) db.dislike_reason = patch.dislikeReason;
-  if (Object.keys(db).length > 0) {
+  if (Object.keys(db).length > 0 && supabase) {
     await supabase.from('history').update(db).eq('id', id);
   }
   const next = readLocal<HistoryRecord[]>(HISTORY_KEY, []).map((r) =>

@@ -1,0 +1,6 @@
+# Supabase client config used by the Bolt deploy tooling.
+
+project_id = "ardoapmrfsktkikxubke"
+
+[functions.ai-assistant]
+verify_jwt = false
